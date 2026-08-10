@@ -1,5 +1,10 @@
 using System.Text.Json;
 
+// Render can run several containers under the same Linux user. Disabling
+// configuration-file watchers prevents exhaustion of the shared inotify limit.
+Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE", "false");
+Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
 WebApplication app = builder.Build();
