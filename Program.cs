@@ -21,7 +21,6 @@ app.Use(async (context, next) =>
         await next();
         return;
     }
-
     if (!context.Request.Headers.TryGetValue("X-Mahatati-Key", out var supplied) ||
         !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
             System.Text.Encoding.UTF8.GetBytes(supplied.ToString()), System.Text.Encoding.UTF8.GetBytes(apiKey)))
@@ -64,6 +63,16 @@ app.MapGet("/api/sync/results", async () =>
     List<string> items = new();
     foreach (string file in files) items.Add(await File.ReadAllTextAsync(file));
     return Results.Json(new { Items = items });
+});
+
+app.MapDelete("/api/sync/results/{envelopeId}", (string envelopeId) =>
+{
+    if (!Guid.TryParseExact(envelopeId, "N", out _))
+        return Results.BadRequest(new { error = "Invalid envelope id." });
+    string path = Path.Combine(dataRoot, "results", envelopeId + ".json");
+    if (!File.Exists(path)) return Results.NotFound();
+    File.Delete(path);
+    return Results.Ok(new { acknowledged = true });
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }));
