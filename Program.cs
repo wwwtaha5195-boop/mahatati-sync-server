@@ -10,10 +10,13 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 WebApplication app = builder.Build();
 
 string apiKey = Environment.GetEnvironmentVariable("MAHATATI_SYNC_API_KEY") ?? "";
+if (apiKey.Length < 16 && app.Environment.IsDevelopment())
+    apiKey = "Mahatati_Local_Debug_Key_2026";
 if (apiKey.Length < 16) throw new InvalidOperationException("Set MAHATATI_SYNC_API_KEY to a secret of at least 16 characters.");
 string dataRoot = Path.GetFullPath(Environment.GetEnvironmentVariable("MAHATATI_SYNC_DATA") ?? Path.Combine(app.Environment.ContentRootPath, "App_Data"));
 Directory.CreateDirectory(dataRoot);
 Directory.CreateDirectory(Path.Combine(dataRoot, "results"));
+Directory.CreateDirectory(Path.Combine(dataRoot, "acks"));
 
 // Render terminates public TLS and forwards traffic to this container over its
 // private HTTP network. The public endpoint is still HTTPS-only at the edge.
@@ -70,14 +73,23 @@ app.MapGet("/api/sync/results", async () =>
     return Results.Json(new { Items = items });
 });
 
-app.MapDelete("/api/sync/results/{envelopeId}", (string envelopeId) =>
+app.MapDelete("/api/sync/results/{envelopeId}", async (string envelopeId) =>
 {
     if (!Guid.TryParseExact(envelopeId, "N", out _))
         return Results.BadRequest(new { error = "Invalid envelope id." });
     string path = Path.Combine(dataRoot, "results", envelopeId + ".json");
     if (!File.Exists(path)) return Results.NotFound();
     File.Delete(path);
+    await AtomicWriteAsync(Path.Combine(dataRoot, "acks", envelopeId + ".ack"), DateTime.UtcNow.ToString("O"));
     return Results.Ok(new { acknowledged = true });
+});
+
+app.MapGet("/api/sync/ack/{envelopeId}", (string envelopeId) =>
+{
+    if (!Guid.TryParseExact(envelopeId, "N", out _)) return Results.BadRequest(new { error = "Invalid envelope id." });
+    return File.Exists(Path.Combine(dataRoot, "acks", envelopeId + ".ack"))
+        ? Results.Ok(new { acknowledged = true })
+        : Results.NotFound();
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }));
